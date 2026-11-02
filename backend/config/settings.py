@@ -25,6 +25,7 @@ ALLOWED_HOSTS = [
 ]
 
 INSTALLED_APPS = [
+    # Django built-in apps
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -32,8 +33,15 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
+    # Third-party apps
     "rest_framework",
     "corsheaders",
+
+    # Our project apps
+    "accounts.apps.AccountsConfig",
+    "workspaces.apps.WorkspacesConfig",
+    "boards.apps.BoardsConfig",
+    "tasks.apps.TasksConfig",
 ]
 
 MIDDLEWARE = [
