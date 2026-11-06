@@ -25,7 +25,8 @@ ALLOWED_HOSTS = [
 ]
 
 INSTALLED_APPS = [
-    # Django built-in apps
+    "daphne",
+
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -33,17 +34,16 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    # Third-party apps
     "rest_framework",
+    "rest_framework.authtoken",
     "corsheaders",
+    "channels",
 
-    # Our project apps
     "accounts.apps.AccountsConfig",
     "workspaces.apps.WorkspacesConfig",
     "boards.apps.BoardsConfig",
     "tasks.apps.TasksConfig",
 ]
-
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -118,4 +118,25 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
+}
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.TokenAuthentication",
+    ],
+
+    "DEFAULT_PAGINATION_CLASS": (
+        "rest_framework.pagination.PageNumberPagination"
+    ),
+
+    "PAGE_SIZE": 10,
+}
+# Django Channels Configuration
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
 }
