@@ -9,6 +9,10 @@ import {
   Layers,
   Sparkles,
   FolderKanban,
+  Users,
+  UserPlus,
+  Shield,
+  Trash2,
 } from "lucide-react";
 import api from "../services/api";
 
@@ -18,11 +22,39 @@ function WorkspacePage() {
 
   const [workspace, setWorkspace] = useState(null);
   const [boards, setBoards] = useState([]);
+  const [members, setMembers] = useState([]);
+
   const [boardName, setBoardName] = useState("");
   const [description, setDescription] = useState("");
+
+  const [memberUsername, setMemberUsername] = useState("");
+  const [memberRole, setMemberRole] = useState("MEMBER");
+
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [addingMember, setAddingMember] = useState(false);
+  const [updatingMember, setUpdatingMember] = useState(null);
+  const [removingMember, setRemovingMember] = useState(null);
+
   const [error, setError] = useState("");
+  const [memberError, setMemberError] = useState("");
+  const [memberSuccess, setMemberSuccess] = useState("");
+
+  const currentUser = JSON.parse(
+    localStorage.getItem("user") || "{}"
+  );
+
+  const ownMembership = members.find(
+    (member) => member.username === currentUser.username
+  );
+
+  const isOwner =
+    workspace?.owner === currentUser.username ||
+    ownMembership?.role === "OWNER";
+
+  const isAdmin = ownMembership?.role === "ADMIN";
+
+  const canManageMembers = isOwner || isAdmin;
 
   useEffect(() => {
     async function loadWorkspace() {
@@ -54,6 +86,22 @@ function WorkspacePage() {
             (board) => board.workspace === Number(workspaceId)
           )
         );
+
+        try {
+          const memberResponse = await api.get(
+            `workspaces/${workspaceId}/members/`
+          );
+
+          const memberData =
+            memberResponse.data.results || memberResponse.data;
+
+          setMembers(memberData);
+        } catch (memberErr) {
+          setMemberError(
+            memberErr.response?.data?.detail ||
+              "Unable to load workspace members."
+          );
+        }
       } catch (err) {
         setError(
           err.response?.data?.detail || "Unable to load workspace."
@@ -93,6 +141,117 @@ function WorkspacePage() {
     } finally {
       setCreating(false);
     }
+  }
+
+  async function handleAddMember(event) {
+    event.preventDefault();
+
+    if (!memberUsername.trim()) return;
+
+    setAddingMember(true);
+    setMemberError("");
+    setMemberSuccess("");
+
+    try {
+      const response = await api.post(
+        `workspaces/${workspaceId}/members/`,
+        {
+          username: memberUsername.trim(),
+          role: memberRole,
+        }
+      );
+
+      setMembers((previous) => [...previous, response.data]);
+      setMemberUsername("");
+      setMemberRole("MEMBER");
+      setMemberSuccess(
+        `${response.data.username} was added to the workspace.`
+      );
+    } catch (err) {
+      const data = err.response?.data;
+
+      setMemberError(
+        data?.detail ||
+          data?.username ||
+          data?.role ||
+          "Unable to add this member."
+      );
+    } finally {
+      setAddingMember(false);
+    }
+  }
+
+  async function handleChangeRole(member, newRole) {
+    if (newRole === member.role) return;
+
+    setUpdatingMember(member.id);
+    setMemberError("");
+    setMemberSuccess("");
+
+    try {
+      const response = await api.patch(
+        `workspaces/${workspaceId}/members/${member.id}/`,
+        { role: newRole }
+      );
+
+      setMembers((previous) =>
+        previous.map((item) =>
+          item.id === member.id ? response.data : item
+        )
+      );
+
+      setMemberSuccess(
+        `${member.username}'s role was updated to ${newRole}.`
+      );
+    } catch (err) {
+      setMemberError(
+        err.response?.data?.detail ||
+          "Unable to update this member's role."
+      );
+    } finally {
+      setUpdatingMember(null);
+    }
+  }
+
+  async function handleRemoveMember(member) {
+    const confirmed = window.confirm(
+      `Are you sure you want to remove ${member.username} from this workspace?`
+    );
+
+    if (!confirmed) return;
+
+    setRemovingMember(member.id);
+    setMemberError("");
+    setMemberSuccess("");
+
+    try {
+      await api.delete(
+        `workspaces/${workspaceId}/members/${member.id}/`
+      );
+
+      setMembers((previous) =>
+        previous.filter((item) => item.id !== member.id)
+      );
+
+      setMemberSuccess(
+        `${member.username} was removed from the workspace.`
+      );
+    } catch (err) {
+      setMemberError(
+        err.response?.data?.detail ||
+          "Unable to remove this member."
+      );
+    } finally {
+      setRemovingMember(null);
+    }
+  }
+
+  function canRemoveMember(member) {
+    if (member.role === "OWNER") return false;
+
+    if (isOwner) return true;
+
+    return isAdmin && member.role === "MEMBER";
   }
 
   if (loading) {
@@ -151,6 +310,7 @@ function WorkspacePage() {
       </nav>
 
       <main className="mx-auto max-w-7xl px-5 py-9 md:px-8 md:py-12">
+        {/* Workspace overview */}
         <section className="mb-10">
           <div className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-indigo-600">
             <Sparkles size={15} />
@@ -184,6 +344,259 @@ function WorkspacePage() {
           </div>
         </section>
 
+        {/* Workspace members */}
+        <section className="mb-12 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                <Users size={23} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">
+                  Workspace members
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Manage your team and their workspace permissions.
+                </p>
+              </div>
+            </div>
+
+            <span className="w-fit rounded-full bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700">
+              {members.length}{" "}
+              {members.length === 1 ? "Member" : "Members"}
+            </span>
+          </div>
+
+          {/* Add member form */}
+          {canManageMembers && (
+            <form
+              onSubmit={handleAddMember}
+              className="mb-7 rounded-2xl border border-slate-200 bg-slate-50 p-5"
+            >
+              <div className="mb-4 flex items-center gap-2">
+                <UserPlus size={18} className="text-indigo-600" />
+                <h3 className="font-semibold text-slate-800">
+                  Add a team member
+                </h3>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-[1fr_180px_auto]">
+                <div>
+                  <label
+                    htmlFor="memberUsername"
+                    className="mb-2 block text-sm font-semibold text-slate-700"
+                  >
+                    Username
+                  </label>
+                  <input
+                    id="memberUsername"
+                    type="text"
+                    placeholder="Enter existing username"
+                    value={memberUsername}
+                    onChange={(event) =>
+                      setMemberUsername(event.target.value)
+                    }
+                    required
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="memberRole"
+                    className="mb-2 block text-sm font-semibold text-slate-700"
+                  >
+                    Workspace role
+                  </label>
+                  <select
+                    id="memberRole"
+                    value={memberRole}
+                    onChange={(event) =>
+                      setMemberRole(event.target.value)
+                    }
+                    disabled={isAdmin && !isOwner}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-100"
+                  >
+                    <option value="MEMBER">Member</option>
+                    {isOwner && (
+                      <option value="ADMIN">Admin</option>
+                    )}
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    disabled={addingMember || !memberUsername.trim()}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
+                  >
+                    <Plus size={17} />
+                    {addingMember ? "Adding..." : "Add member"}
+                  </button>
+                </div>
+              </div>
+
+              <p className="mt-3 text-xs text-slate-400">
+                Users must already have a TaskFlow account. Admins can add
+                regular members; owners can also assign the Admin role.
+              </p>
+            </form>
+          )}
+
+          {/* Member messages */}
+          {memberError && (
+            <p
+              role="alert"
+              className="mb-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600"
+            >
+              {memberError}
+            </p>
+          )}
+
+          {memberSuccess && (
+            <p
+              role="status"
+              className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+            >
+              {memberSuccess}
+            </p>
+          )}
+
+          {/* Member list */}
+          {members.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 px-5 py-10 text-center">
+              <Users
+                size={28}
+                className="mx-auto mb-3 text-slate-400"
+              />
+              <p className="font-semibold text-slate-700">
+                No members found
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Workspace members will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-slate-200">
+              <div className="hidden grid-cols-[1fr_150px_170px] gap-4 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-400 sm:grid">
+                <span>Member</span>
+                <span>Role</span>
+                <span className="text-right">Actions</span>
+              </div>
+
+              <div className="divide-y divide-slate-100">
+                {members.map((member) => {
+                  const isCurrentUser =
+                    member.username === currentUser.username;
+
+                  return (
+                    <div
+                      key={member.id}
+                      className="grid gap-3 px-5 py-4 sm:grid-cols-[1fr_150px_170px] sm:items-center sm:gap-4"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 font-bold text-indigo-700">
+                          {member.username?.charAt(0).toUpperCase()}
+                        </div>
+
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-800">
+                            {member.username}
+                            {isCurrentUser && (
+                              <span className="ml-2 text-xs font-medium text-slate-400">
+                                (You)
+                              </span>
+                            )}
+                          </p>
+                          <p className="mt-0.5 text-xs text-slate-400">
+                            Joined{" "}
+                            {member.joined_at
+                              ? new Date(
+                                  member.joined_at
+                                ).toLocaleDateString()
+                              : "Recently"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div>
+                        {isOwner && member.role !== "OWNER" ? (
+                          <select
+                            aria-label={`Change ${member.username}'s role`}
+                            value={member.role}
+                            disabled={updatingMember === member.id}
+                            onChange={(event) =>
+                              handleChangeRole(
+                                member,
+                                event.target.value
+                              )
+                            }
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-400 disabled:opacity-50"
+                          >
+                            <option value="MEMBER">Member</option>
+                            <option value="ADMIN">Admin</option>
+                          </select>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${
+                              member.role === "OWNER"
+                                ? "bg-amber-50 text-amber-700"
+                                : member.role === "ADMIN"
+                                  ? "bg-indigo-50 text-indigo-700"
+                                  : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {member.role === "OWNER" && (
+                              <Shield size={12} />
+                            )}
+                            {member.role}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex justify-start sm:justify-end">
+                        {canManageMembers &&
+                          canRemoveMember(member) && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleRemoveMember(member)
+                              }
+                              disabled={
+                                removingMember === member.id ||
+                                updatingMember === member.id
+                              }
+                              className="inline-flex items-center gap-2 rounded-lg border border-red-100 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Trash2 size={14} />
+                              {removingMember === member.id
+                                ? "Removing..."
+                                : "Remove"}
+                            </button>
+                          )}
+
+                        {member.role === "OWNER" && (
+                          <span className="text-xs font-medium text-slate-400">
+                            Workspace owner
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!canManageMembers && (
+            <p className="mt-4 text-xs text-slate-400">
+              You can view workspace members. Only workspace owners and
+              admins can manage membership.
+            </p>
+          )}
+        </section>
+
+        {/* Create board */}
         <section className="mb-12 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-6 flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
@@ -213,7 +626,9 @@ function WorkspacePage() {
                   type="text"
                   placeholder="e.g. Website Redesign"
                   value={boardName}
-                  onChange={(e) => setBoardName(e.target.value)}
+                  onChange={(event) =>
+                    setBoardName(event.target.value)
+                  }
                   required
                   maxLength={150}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50"
@@ -235,7 +650,9 @@ function WorkspacePage() {
                   type="text"
                   placeholder="What is this board for?"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(event) =>
+                    setDescription(event.target.value)
+                  }
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50"
                 />
               </div>
@@ -263,6 +680,7 @@ function WorkspacePage() {
           )}
         </section>
 
+        {/* Boards */}
         <section>
           <div className="mb-6 flex items-end justify-between gap-4">
             <div>
@@ -290,7 +708,8 @@ function WorkspacePage() {
                 No boards yet
               </h3>
               <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
-                Create your first board above to start organizing tasks in this workspace.
+                Create your first board above to start organizing tasks
+                in this workspace.
               </p>
             </div>
           ) : (
