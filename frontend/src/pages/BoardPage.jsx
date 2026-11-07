@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -74,7 +73,7 @@ function TaskCard({ task, onEdit, onDelete, isOverlay = false }) {
     <article
       ref={setNodeRef}
       style={style}
-      className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm ${
+      className={`rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md ${
         isOverlay ? "rotate-2 shadow-xl" : ""
       }`}
     >
@@ -166,19 +165,19 @@ function BoardColumn({
   return (
     <section
       ref={setNodeRef}
-      className={`flex w-80 min-w-80 flex-col rounded-2xl border p-3 transition-colors ${
+      className={`flex w-[320px] min-w-[320px] flex-col rounded-2xl border p-3.5 shadow-sm transition-all duration-200 ${
         isOver
-          ? "border-blue-400 bg-blue-50/70"
-          : "border-slate-200 bg-slate-100/80"
+          ? "border-indigo-300 bg-indigo-50/80 shadow-md shadow-indigo-100/70"
+          : "border-slate-200/80 bg-slate-100/90"
       }`}
     >
-      <div className="mb-3 flex items-center justify-between gap-2 px-1">
+      <div className="mb-4 flex items-center justify-between gap-2 px-1.5">
         <div className="flex min-w-0 items-center gap-2">
-          <h2 className="truncate font-semibold text-slate-800">
+          <h2 className="truncate text-sm font-bold tracking-wide text-slate-800">
             {column.name}
           </h2>
 
-          <span className="rounded-full bg-white px-2 py-0.5 text-xs text-slate-500">
+          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold tabular-nums text-slate-600">
             {tasks.length}
           </span>
         </div>
@@ -186,7 +185,7 @@ function BoardColumn({
         <button
           type="button"
           onClick={() => onAddTask(column.id)}
-          className="rounded-lg p-2 text-slate-500 hover:bg-white hover:text-blue-600"
+          className="rounded-xl border border-transparent p-2 text-slate-500 transition hover:border-indigo-100 hover:bg-white hover:text-indigo-600"
           title="Add task"
           aria-label={`Add task to ${column.name}`}
         >
@@ -198,7 +197,7 @@ function BoardColumn({
         items={tasks.map((task) => task.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="flex min-h-32 flex-1 flex-col gap-3">
+        <div className="flex min-h-40 flex-1 flex-col gap-3">
           {tasks.map((task) => (
             <TaskCard
               key={task.id}
@@ -209,7 +208,7 @@ function BoardColumn({
           ))}
 
           {tasks.length === 0 && (
-            <div className="rounded-xl border border-dashed border-slate-300 px-3 py-8 text-center text-sm text-slate-400">
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 px-3 py-10 text-center text-sm text-slate-400">
               Drop a task here
             </div>
           )}
@@ -492,8 +491,7 @@ function BoardPage() {
       setError("Unable to delete this task. Please try again.");
     }
   }
-
-  function findTask(taskId) {
+    function findTask(taskId) {
     return tasks.find(
       (task) => String(task.id) === String(taskId)
     );
@@ -656,25 +654,25 @@ function BoardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white px-6 py-5">
-        <div className="mx-auto flex max-w-7xl items-center gap-3">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/50">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 px-4 py-4 shadow-sm backdrop-blur-xl sm:px-6">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-4">
           <button
             type="button"
             onClick={() => window.history.back()}
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+            className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
             aria-label="Go back"
           >
             <ArrowLeft size={20} />
           </button>
 
           <div>
-            <h1 className="text-xl font-bold text-slate-900">
+            <h1 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">
               {board.name}
             </h1>
 
             {board.description && (
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">
                 {board.description}
               </p>
             )}
@@ -682,9 +680,9 @@ function BoardPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 py-6">
+      <main className="mx-auto max-w-[1600px] px-4 py-7 sm:px-6 lg:px-8">
         {/* WebSocket connection status */}
-        <div className="mb-4 flex items-center gap-2 text-sm">
+        <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3.5 py-2 text-sm shadow-sm">
           <span
             className={`h-2.5 w-2.5 rounded-full ${
               isConnected ? "bg-green-500" : "bg-red-500"
@@ -699,12 +697,12 @@ function BoardPage() {
         </div>
 
         {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-5 rounded-2xl border border-red-200 bg-red-50/90 px-4 py-3.5 text-sm text-red-700 shadow-sm">
             {error}
           </div>
         )}
 
-        <p className="mb-4 text-sm text-slate-500">
+        <p className="mb-5 text-sm text-slate-500">
           Drag tasks by the grip icon to move them between columns or
           change their order.
         </p>
@@ -716,7 +714,7 @@ function BoardPage() {
           onDragEnd={handleDragEnd}
           onDragCancel={handleDragCancel}
         >
-          <div className="flex items-start gap-4 overflow-x-auto pb-6">
+          <div className="flex min-h-[calc(100vh-230px)] items-start gap-5 overflow-x-auto pb-8 pt-1">
             {columns.map((column) => (
               <BoardColumn
                 key={column.id}
@@ -743,17 +741,17 @@ function BoardPage() {
       </main>
 
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-white/70 bg-white p-6 shadow-2xl shadow-slate-950/20 sm:p-7">
             <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-900">
+              <h2 className="text-xl font-extrabold tracking-tight text-slate-900">
                 {editingTask ? "Edit task" : "Create task"}
               </h2>
 
               <button
                 type="button"
                 onClick={closeModal}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+                className="rounded-xl border border-slate-200 bg-white p-2.5 text-slate-600 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
                 aria-label="Close dialog"
               >
                 <X size={20} />
@@ -776,7 +774,7 @@ function BoardPage() {
                       title: event.target.value,
                     })
                   }
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
                   placeholder="Enter task title"
                 />
               </div>
@@ -795,7 +793,7 @@ function BoardPage() {
                       description: event.target.value,
                     })
                   }
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
                   placeholder="Add task details"
                 />
               </div>
@@ -813,7 +811,7 @@ function BoardPage() {
                       priority: event.target.value,
                     })
                   }
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
                 >
                   {PRIORITIES.map((priority) => (
                     <option key={priority} value={priority}>
@@ -837,7 +835,7 @@ function BoardPage() {
                       due_date: event.target.value,
                     })
                   }
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
                 />
               </div>
 
