@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -39,10 +40,13 @@ const priorityStyles = {
 
 function getAssigneeName(task) {
   const assignee = task.assigned_to;
+
   if (!assignee) return "Unassigned";
+
   if (typeof assignee === "object") {
     return assignee.username || assignee.email || "Assigned";
   }
+
   return `User #${assignee}`;
 }
 
@@ -90,6 +94,7 @@ function TaskCard({ task, onEdit, onDelete, isOverlay = false }) {
           <h3 className="break-words font-semibold text-slate-800">
             {task.title}
           </h3>
+
           {task.description && (
             <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-500">
               {task.description}
@@ -108,6 +113,7 @@ function TaskCard({ task, onEdit, onDelete, isOverlay = false }) {
             >
               <Pencil size={16} />
             </button>
+
             <button
               type="button"
               onClick={() => onDelete(task.id)}
@@ -129,9 +135,11 @@ function TaskCard({ task, onEdit, onDelete, isOverlay = false }) {
         >
           {task.priority || "MEDIUM"}
         </span>
+
         <span className="text-xs text-slate-500">
           {getAssigneeName(task)}
         </span>
+
         {task.due_date && (
           <span className="flex items-center gap-1 text-xs text-slate-500">
             <Calendar size={13} />
@@ -169,10 +177,12 @@ function BoardColumn({
           <h2 className="truncate font-semibold text-slate-800">
             {column.name}
           </h2>
+
           <span className="rounded-full bg-white px-2 py-0.5 text-xs text-slate-500">
             {tasks.length}
           </span>
         </div>
+
         <button
           type="button"
           onClick={() => onAddTask(column.id)}
@@ -197,6 +207,7 @@ function BoardColumn({
               onDelete={onDeleteTask}
             />
           ))}
+
           {tasks.length === 0 && (
             <div className="rounded-xl border border-dashed border-slate-300 px-3 py-8 text-center text-sm text-slate-400">
               Drop a task here
@@ -218,10 +229,12 @@ function BoardPage() {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [activeTask, setActiveTask] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [selectedColumn, setSelectedColumn] = useState(null);
+
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -242,6 +255,7 @@ function BoardPage() {
     try {
       const boardResponse = await api.get(`boards/${boardId}/`);
       const boardData = boardResponse.data;
+
       setBoard(boardData);
 
       const workspaceId =
@@ -259,6 +273,7 @@ function BoardPage() {
           ? columnsResponse.data
           : columnsResponse.data.results || []
       );
+
       setTasks(
         Array.isArray(tasksResponse.data)
           ? tasksResponse.data
@@ -276,48 +291,142 @@ function BoardPage() {
     loadBoard();
   }, [loadBoard]);
 
+  // Real-time WebSocket connection
+  useEffect(() => {
+    if (!board) return;
+
+    const workspaceId =
+      typeof board.workspace === "object"
+        ? board.workspace.id
+        : board.workspace;
+
+    const token = localStorage.getItem("accessToken");
+
+    if (!workspaceId || !token) return;
+
+    const socket = new WebSocket(
+      `ws://127.0.0.1:8000/ws/workspaces/${workspaceId}/tasks/?token=${encodeURIComponent(token)}`
+    );
+
+    socket.onopen = () => {
+      setIsConnected(true);
+      console.log("WebSocket connected");
+    };
+
+    socket.onclose = () => {
+      setIsConnected(false);
+      console.log("WebSocket disconnected");
+    };
+
+    socket.onerror = (event) => {
+      console.error("WebSocket error:", event);
+      setIsConnected(false);
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        const task = message.data;
+
+        if (message.type === "task_created" && task) {
+          setTasks((current) => {
+            const exists = current.some(
+              (item) => String(item.id) === String(task.id)
+            );
+
+            if (exists) return current;
+
+            return [...current, task];
+          });
+        }
+
+        if (message.type === "task_updated" && task) {
+          setTasks((current) => {
+            const exists = current.some(
+              (item) => String(item.id) === String(task.id)
+            );
+
+            if (!exists) return [...current, task];
+
+            return current.map((item) =>
+              String(item.id) === String(task.id) ? task : item
+            );
+          });
+        }
+
+        if (message.type === "task_deleted" && task) {
+          setTasks((current) =>
+            current.filter(
+              (item) => String(item.id) !== String(task.id)
+            )
+          );
+        }
+      } catch (err) {
+        console.error("Could not process WebSocket message:", err);
+      }
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, [board]);
+
   const tasksByColumn = useMemo(() => {
     const grouped = {};
+
     columns.forEach((column) => {
       grouped[column.id] = tasks
-        .filter((task) => String(task.column) === String(column.id))
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+        .filter(
+          (task) => String(task.column) === String(column.id)
+        )
+        .sort(
+          (a, b) => (a.position ?? 0) - (b.position ?? 0)
+        );
     });
+
     return grouped;
   }, [columns, tasks]);
 
   function openCreateModal(columnId) {
     setEditingTask(null);
     setSelectedColumn(columnId);
+
     setFormData({
       title: "",
       description: "",
       priority: "MEDIUM",
       due_date: "",
     });
+
     setModalOpen(true);
   }
 
   function openEditModal(task) {
     setEditingTask(task);
     setSelectedColumn(task.column);
+
     setFormData({
       title: task.title || "",
       description: task.description || "",
       priority: task.priority || "MEDIUM",
-      due_date: task.due_date ? String(task.due_date).slice(0, 10) : "",
+      due_date: task.due_date
+        ? String(task.due_date).slice(0, 10)
+        : "",
     });
+
     setModalOpen(true);
   }
 
   function closeModal() {
     if (saving) return;
+
     setModalOpen(false);
     setEditingTask(null);
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
+
     if (!formData.title.trim()) return;
 
     setSaving(true);
@@ -350,9 +459,11 @@ function BoardPage() {
 
       setModalOpen(false);
       setEditingTask(null);
+
       await loadBoard();
     } catch (err) {
       console.error("Failed to save task:", err);
+
       setError(
         err.response?.data
           ? JSON.stringify(err.response.data)
@@ -369,9 +480,13 @@ function BoardPage() {
     }
 
     setError("");
+
     try {
       await api.delete(`tasks/${taskId}/`);
-      setTasks((current) => current.filter((task) => task.id !== taskId));
+
+      setTasks((current) =>
+        current.filter((task) => task.id !== taskId)
+      );
     } catch (err) {
       console.error("Failed to delete task:", err);
       setError("Unable to delete this task. Please try again.");
@@ -379,18 +494,25 @@ function BoardPage() {
   }
 
   function findTask(taskId) {
-    return tasks.find((task) => String(task.id) === String(taskId));
+    return tasks.find(
+      (task) => String(task.id) === String(taskId)
+    );
   }
 
   function findColumnForTask(taskId) {
     const task = findTask(taskId);
-    return task ? columns.find(
-      (column) => String(column.id) === String(task.column)
-    ) : null;
+
+    return task
+      ? columns.find(
+          (column) => String(column.id) === String(task.column)
+        )
+      : null;
   }
 
-  async function handleDragStart(event) {
-    const task = event.active.data.current?.task || findTask(event.active.id);
+  function handleDragStart(event) {
+    const task =
+      event.active.data.current?.task || findTask(event.active.id);
+
     setActiveTask(task || null);
   }
 
@@ -398,9 +520,11 @@ function BoardPage() {
     setActiveTask(null);
 
     const { active, over } = event;
+
     if (!over) return;
 
     const draggedTask = findTask(active.id);
+
     if (!draggedTask) return;
 
     let destinationColumn = null;
@@ -412,6 +536,7 @@ function BoardPage() {
       destinationColumn = findColumnForTask(over.id);
     } else if (String(over.id).startsWith("column-")) {
       const destinationId = String(over.id).replace("column-", "");
+
       destinationColumn = columns.find(
         (column) => String(column.id) === destinationId
       );
@@ -421,24 +546,39 @@ function BoardPage() {
 
     const sourceColumnId = draggedTask.column;
     const destinationColumnId = destinationColumn.id;
+
     const sourceTasks = tasksByColumn[sourceColumnId] || [];
     const destinationTasks = tasksByColumn[destinationColumnId] || [];
 
+    // Reorder tasks within the same column
     if (String(sourceColumnId) === String(destinationColumnId)) {
       const oldIndex = sourceTasks.findIndex(
         (task) => String(task.id) === String(active.id)
       );
+
       const newIndex = sourceTasks.findIndex(
         (task) => String(task.id) === String(over.id)
       );
 
-      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) {
+      if (
+        oldIndex === -1 ||
+        newIndex === -1 ||
+        oldIndex === newIndex
+      ) {
         return;
       }
 
-      const reordered = arrayMove(sourceTasks, oldIndex, newIndex);
+      const reordered = arrayMove(
+        sourceTasks,
+        oldIndex,
+        newIndex
+      );
+
       const updatedTasks = tasks.map((task) => {
-        const index = reordered.findIndex((item) => item.id === task.id);
+        const index = reordered.findIndex(
+          (item) => item.id === task.id
+        );
+
         return index === -1
           ? task
           : { ...task, position: index };
@@ -449,17 +589,24 @@ function BoardPage() {
       try {
         await Promise.all(
           reordered.map((task, index) =>
-            api.patch(`tasks/${task.id}/`, { position: index })
+            api.patch(`tasks/${task.id}/`, {
+              position: index,
+            })
           )
         );
       } catch (err) {
         console.error("Failed to save task order:", err);
-        setError("Could not save the new task order. Reloading the board.");
+        setError(
+          "Could not save the new task order. Reloading the board."
+        );
+
         await loadBoard();
       }
+
       return;
     }
 
+    // Move task to another column
     const newPosition = destinationTasks.length;
     const previousTasks = tasks;
 
@@ -520,10 +667,12 @@ function BoardPage() {
           >
             <ArrowLeft size={20} />
           </button>
+
           <div>
             <h1 className="text-xl font-bold text-slate-900">
               {board.name}
             </h1>
+
             {board.description && (
               <p className="mt-1 text-sm text-slate-500">
                 {board.description}
@@ -534,6 +683,21 @@ function BoardPage() {
       </header>
 
       <main className="mx-auto max-w-7xl px-6 py-6">
+        {/* WebSocket connection status */}
+        <div className="mb-4 flex items-center gap-2 text-sm">
+          <span
+            className={`h-2.5 w-2.5 rounded-full ${
+              isConnected ? "bg-green-500" : "bg-red-500"
+            }`}
+          />
+
+          <span className="text-slate-600">
+            {isConnected
+              ? "Live updates connected"
+              : "Live updates disconnected"}
+          </span>
+        </div>
+
         {error && (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
@@ -541,8 +705,8 @@ function BoardPage() {
         )}
 
         <p className="mb-4 text-sm text-slate-500">
-          Drag tasks by the grip icon to move them between columns or change
-          their order.
+          Drag tasks by the grip icon to move them between columns or
+          change their order.
         </p>
 
         <DndContext
@@ -585,6 +749,7 @@ function BoardPage() {
               <h2 className="text-lg font-bold text-slate-900">
                 {editingTask ? "Edit task" : "Create task"}
               </h2>
+
               <button
                 type="button"
                 onClick={closeModal}
@@ -600,6 +765,7 @@ function BoardPage() {
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Task title
                 </label>
+
                 <input
                   type="text"
                   required
@@ -619,6 +785,7 @@ function BoardPage() {
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Description
                 </label>
+
                 <textarea
                   rows="3"
                   value={formData.description}
@@ -637,6 +804,7 @@ function BoardPage() {
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Priority
                 </label>
+
                 <select
                   value={formData.priority}
                   onChange={(event) =>
@@ -659,6 +827,7 @@ function BoardPage() {
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Due date
                 </label>
+
                 <input
                   type="date"
                   value={formData.due_date}
@@ -681,12 +850,16 @@ function BoardPage() {
                 >
                   Cancel
                 </button>
+
                 <button
                   type="submit"
                   disabled={saving || !formData.title.trim()}
                   className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {saving && <LoaderCircle size={16} className="animate-spin" />}
+                  {saving && (
+                    <LoaderCircle size={16} className="animate-spin" />
+                  )}
+
                   {editingTask ? "Save changes" : "Create task"}
                 </button>
               </div>

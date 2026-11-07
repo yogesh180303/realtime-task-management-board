@@ -10,7 +10,10 @@ from rest_framework.filters import OrderingFilter
 
 from .models import Task, TaskComment
 from .serializers import TaskSerializer, TaskCommentSerializer
-from .permissions import IsCommentAuthorOrReadOnly
+from .permissions import (
+    IsCommentAuthorOrReadOnly,
+    IsTaskEditorOrReadOnly,
+)
 
 
 def broadcast_task_event(workspace_id, event_type, task_data):
@@ -97,7 +100,10 @@ class TaskListCreateView(generics.ListCreateAPIView):
 # TASK DETAIL, UPDATE AND DELETE API
 class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [
+    IsAuthenticated,
+    IsTaskEditorOrReadOnly,
+]
 
     def get_queryset(self):
         return Task.objects.filter(
