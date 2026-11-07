@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -21,6 +22,7 @@ import {
   Calendar,
   GripVertical,
   LoaderCircle,
+  MessageCircle,
   Pencil,
   Plus,
   Trash2,
@@ -49,7 +51,13 @@ function getAssigneeName(task) {
   return `User #${assignee}`;
 }
 
-function TaskCard({ task, onEdit, onDelete, isOverlay = false }) {
+function TaskCard({
+  task,
+  onEdit,
+  onDelete,
+  onComments,
+  isOverlay = false,
+}) {
   const {
     attributes,
     listeners,
@@ -115,6 +123,16 @@ function TaskCard({ task, onEdit, onDelete, isOverlay = false }) {
 
             <button
               type="button"
+              onClick={() => onComments(task)}
+              className="rounded-lg p-2 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600"
+              aria-label="View comments"
+              title="View comments"
+            >
+              <MessageCircle size={16} />
+            </button>
+
+            <button
+              type="button"
               onClick={() => onDelete(task.id)}
               className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600"
               aria-label="Delete task"
@@ -156,6 +174,7 @@ function BoardColumn({
   onAddTask,
   onEditTask,
   onDeleteTask,
+  onCommentsTask,
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${column.id}`,
@@ -204,6 +223,7 @@ function BoardColumn({
               task={task}
               onEdit={onEditTask}
               onDelete={onDeleteTask}
+              onComments={onCommentsTask}
             />
           ))}
 
@@ -218,6 +238,256 @@ function BoardColumn({
   );
 }
 
+function TaskComments({ task, onClose }) {
+  const [comments, setComments] = useState([]);
+  const [content, setContent] = useState("");
+  const [editingComment, setEditingComment] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const currentUser = JSON.parse(
+    localStorage.getItem("user") || "{}"
+  );
+
+  const commentsUrl = `tasks/${task.id}/comments/`;
+
+  const loadComments = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await api.get(commentsUrl);
+
+      setComments(
+        Array.isArray(response.data)
+          ? response.data
+          : response.data.results || []
+      );
+    } catch (err) {
+      console.error("Failed to load comments:", err);
+      setError("Unable to load comments. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, [commentsUrl]);
+
+  useEffect(() => {
+    loadComments();
+  }, [loadComments]);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+
+    if (!content.trim()) return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      if (editingComment) {
+        await api.patch(
+          `${commentsUrl}${editingComment.id}/`,
+          { content: content.trim() }
+        );
+      } else {
+        await api.post(commentsUrl, {
+          content: content.trim(),
+        });
+      }
+
+      setContent("");
+      setEditingComment(null);
+      await loadComments();
+    } catch (err) {
+      console.error("Failed to save comment:", err);
+
+      setError(
+        err.response?.status === 403
+          ? "You do not have permission to edit this comment."
+          : "Unable to save comment. Please try again."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(commentId) {
+    if (!window.confirm("Delete this comment?")) return;
+
+    setError("");
+
+    try {
+      await api.delete(`${commentsUrl}${commentId}/`);
+      await loadComments();
+    } catch (err) {
+      console.error("Failed to delete comment:", err);
+
+      setError(
+        err.response?.status === 403
+          ? "Only the comment author can delete this comment."
+          : "Unable to delete comment. Please try again."
+      );
+    }
+  }
+
+  function startEditing(comment) {
+    setEditingComment(comment);
+    setContent(comment.content);
+  }
+
+  function cancelEditing() {
+    setEditingComment(null);
+    setContent("");
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex justify-end bg-slate-950/50 backdrop-blur-sm">
+      <section
+        className="flex h-full w-full max-w-lg flex-col bg-white shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Task comments"
+      >
+        <header className="flex items-center justify-between border-b border-slate-200 p-5">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-slate-900">
+              Task comments
+            </h2>
+
+            <p className="mt-1 truncate text-sm text-slate-500">
+              {task.title}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"
+            aria-label="Close comments"
+          >
+            <X size={20} />
+          </button>
+        </header>
+
+        <div className="flex-1 space-y-4 overflow-y-auto p-5">
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-500">
+              <LoaderCircle size={18} className="animate-spin" />
+              Loading comments...
+            </div>
+          ) : comments.length === 0 ? (
+            <div className="py-12 text-center">
+              <MessageCircle
+                size={32}
+                className="mx-auto text-slate-300"
+              />
+
+              <p className="mt-3 font-medium text-slate-700">
+                No comments yet
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Start the discussion on this task.
+              </p>
+            </div>
+          ) : (
+            comments.map((comment) => (
+              <article
+                key={comment.id}
+                className="rounded-2xl border border-slate-200 p-4"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-slate-800">
+                    {comment.author || "Workspace member"}
+                  </span>
+
+                  <span className="text-xs text-slate-400">
+                    {comment.created_at
+                      ? new Date(comment.created_at).toLocaleString()
+                      : ""}
+                  </span>
+                </div>
+
+                <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600">
+                  {comment.content}
+                </p>
+
+                {currentUser?.username === comment.author && (
+                  <div className="mt-3 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => startEditing(comment)}
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(comment.id)}
+                      className="text-xs font-semibold text-red-600 hover:text-red-800"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </article>
+            ))
+          )}
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-3 border-t border-slate-200 p-5"
+        >
+          <label className="block text-sm font-semibold text-slate-700">
+            {editingComment ? "Edit your comment" : "Add a comment"}
+          </label>
+
+          <textarea
+            rows={3}
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            placeholder="Write something..."
+            className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+          />
+
+          <div className="flex justify-end gap-2">
+            {editingComment && (
+              <button
+                type="button"
+                onClick={cancelEditing}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            )}
+
+            <button
+              type="submit"
+              disabled={saving || !content.trim()}
+              className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving && (
+                <LoaderCircle size={16} className="animate-spin" />
+              )}
+
+              {editingComment ? "Save changes" : "Post comment"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function BoardPage() {
   const { boardId } = useParams();
 
@@ -229,6 +499,7 @@ function BoardPage() {
   const [saving, setSaving] = useState(false);
   const [activeTask, setActiveTask] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [commentTask, setCommentTask] = useState(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
@@ -416,6 +687,10 @@ function BoardPage() {
     setModalOpen(true);
   }
 
+  function openComments(task) {
+    setCommentTask(task);
+  }
+
   function closeModal() {
     if (saving) return;
 
@@ -491,7 +766,8 @@ function BoardPage() {
       setError("Unable to delete this task. Please try again.");
     }
   }
-    function findTask(taskId) {
+
+  function findTask(taskId) {
     return tasks.find(
       (task) => String(task.id) === String(taskId)
     );
@@ -723,6 +999,7 @@ function BoardPage() {
                 onAddTask={openCreateModal}
                 onEditTask={openEditModal}
                 onDeleteTask={handleDelete}
+                onCommentsTask={openComments}
               />
             ))}
           </div>
@@ -733,12 +1010,20 @@ function BoardPage() {
                 task={activeTask}
                 onEdit={() => {}}
                 onDelete={() => {}}
+                onComments={() => {}}
                 isOverlay
               />
             ) : null}
           </DragOverlay>
         </DndContext>
       </main>
+
+      {commentTask && (
+        <TaskComments
+          task={commentTask}
+          onClose={() => setCommentTask(null)}
+        />
+      )}
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
