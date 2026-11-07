@@ -46,6 +46,8 @@ class WorkspaceMembershipSerializer(serializers.ModelSerializer):
 
         read_only_fields = [
             "id",
+            "workspace",
+            "user",
             "workspace_name",
             "username",
             "joined_at",
