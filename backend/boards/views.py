@@ -1,3 +1,5 @@
+
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 
 from rest_framework import generics
@@ -17,10 +19,26 @@ class BoardListCreateView(generics.ListCreateAPIView):
             workspace__memberships__user=self.request.user
         ).distinct()
 
+    @transaction.atomic
     def perform_create(self, serializer):
-        serializer.save(
+        board = serializer.save(
             created_by=self.request.user
         )
+
+        default_columns = [
+            "To Do",
+            "In Progress",
+            "Done",
+        ]
+
+        BoardColumn.objects.bulk_create([
+            BoardColumn(
+                board=board,
+                name=name,
+                position=position,
+            )
+            for position, name in enumerate(default_columns)
+        ])
 
 
 # BOARD RETRIEVE, UPDATE AND DELETE API
@@ -53,8 +71,9 @@ class BoardColumnListCreateView(generics.ListCreateAPIView):
         )
 
         serializer.save(board=board)
-        
-        # BOARD COLUMN RETRIEVE, UPDATE AND DELETE API
+
+
+# BOARD COLUMN RETRIEVE, UPDATE AND DELETE API
 class BoardColumnDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = BoardColumnSerializer
     permission_classes = [IsAuthenticated]
