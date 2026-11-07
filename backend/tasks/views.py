@@ -15,6 +15,8 @@ from .permissions import (
     IsTaskEditorOrReadOnly,
 )
 
+from notifications.models import Notification
+
 
 def broadcast_task_event(workspace_id, event_type, task_data):
     channel_layer = get_channel_layer()
@@ -90,6 +92,16 @@ class TaskListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         task = serializer.save(created_by=self.request.user)
 
+        # Create notification for the assigned user.
+        if task.assigned_to:
+            Notification.objects.create(
+                recipient=task.assigned_to,
+                message=f"You have been assigned the task: {task.title}",
+                notification_type=Notification.NotificationType.TASK_ASSIGNED,
+                task=task,
+            )
+
+        # Preserve the existing real-time task broadcast.
         broadcast_task_event(
             task.workspace_id,
             "task_created",
@@ -100,10 +112,11 @@ class TaskListCreateView(generics.ListCreateAPIView):
 # TASK DETAIL, UPDATE AND DELETE API
 class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TaskSerializer
+
     permission_classes = [
-    IsAuthenticated,
-    IsTaskEditorOrReadOnly,
-]
+        IsAuthenticated,
+        IsTaskEditorOrReadOnly,
+    ]
 
     def get_queryset(self):
         return Task.objects.filter(

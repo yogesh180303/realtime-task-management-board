@@ -11,6 +11,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import api from "../services/api";
+import NotificationBell from "../components/NotificationBell";
 
 function DashboardPage() {
   const [workspaces, setWorkspaces] = useState([]);
@@ -110,13 +111,17 @@ function DashboardPage() {
             </div>
           </div>
 
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
-          >
-            <LogOut size={19} />
-            Logout
-          </button>
+          <div className="flex items-center gap-3">
+  <NotificationBell />
+
+  <button
+    onClick={handleLogout}
+    className="flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+  >
+    <LogOut size={19} />
+    Logout
+  </button>
+</div>
         </div>
       </header>
 

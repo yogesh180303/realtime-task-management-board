@@ -43,7 +43,10 @@ INSTALLED_APPS = [
     "workspaces.apps.WorkspacesConfig",
     "boards.apps.BoardsConfig",
     "tasks.apps.TasksConfig",
+    "notifications.apps.NotificationsConfig",
+   
 ]
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -118,9 +121,7 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
-}
 
-REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
     ],
@@ -131,6 +132,7 @@ REST_FRAMEWORK = {
 
     "PAGE_SIZE": 10,
 }
+
 # Django Channels Configuration
 CHANNEL_LAYERS = {
     "default": {
