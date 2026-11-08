@@ -8,14 +8,15 @@ from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import OrderingFilter
 
+from activity.services import log_activity
+from notifications.models import Notification
+
 from .models import Task, TaskComment
 from .serializers import TaskSerializer, TaskCommentSerializer
 from .permissions import (
     IsCommentAuthorOrReadOnly,
     IsTaskEditorOrReadOnly,
 )
-
-from notifications.models import Notification
 
 
 def broadcast_task_event(workspace_id, event_type, task_data):
@@ -92,6 +93,15 @@ class TaskListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         task = serializer.save(created_by=self.request.user)
 
+        # Record task creation in the Activity Log.
+        log_activity(
+            workspace=task.workspace,
+            actor=self.request.user,
+            action="TASK_CREATED",
+            description=f"Created task: {task.title}",
+            task=task,
+        )
+
         # Create notification for the assigned user.
         if task.assigned_to:
             Notification.objects.create(
@@ -126,6 +136,16 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     def perform_update(self, serializer):
         task = serializer.save()
 
+        # Record task update in the Activity Log.
+        log_activity(
+            workspace=task.workspace,
+            actor=self.request.user,
+            action="TASK_UPDATED",
+            description=f"Updated task: {task.title}",
+            task=task,
+        )
+
+        # Preserve the existing real-time task broadcast.
         broadcast_task_event(
             task.workspace_id,
             "task_updated",
@@ -133,11 +153,23 @@ class TaskDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
     def perform_destroy(self, instance):
+        workspace = instance.workspace
         workspace_id = instance.workspace_id
         task_id = instance.id
+        task_title = instance.title
+
+        # Record deletion before deleting the task.
+        log_activity(
+            workspace=workspace,
+            actor=self.request.user,
+            action="TASK_DELETED",
+            description=f"Deleted task: {task_title}",
+            task=None,
+        )
 
         instance.delete()
 
+        # Preserve the existing real-time task broadcast.
         broadcast_task_event(
             workspace_id,
             "task_deleted",
@@ -163,9 +195,18 @@ class TaskCommentListCreateView(generics.ListCreateAPIView):
             workspace__memberships__user=self.request.user,
         )
 
-        serializer.save(
+        comment = serializer.save(
             task=task,
             author=self.request.user,
+        )
+
+        # Record comment creation in the Activity Log.
+        log_activity(
+            workspace=task.workspace,
+            actor=self.request.user,
+            action="COMMENT_ADDED",
+            description=f"Added a comment to task: {task.title}",
+            task=task,
         )
 
 

@@ -8,6 +8,8 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from activity.services import log_activity
+
 from .models import Workspace, WorkspaceMembership
 from .serializers import (
     WorkspaceSerializer,
@@ -134,6 +136,16 @@ class WorkspaceMemberListCreateView(generics.ListCreateAPIView):
             role=role,
         )
 
+        # Record member addition.
+        log_activity(
+            workspace=workspace,
+            actor=request.user,
+            action="MEMBER_ADDED",
+            description=(
+                f"Added {user.username} to the workspace as {role}."
+            ),
+        )
+
         serializer = self.get_serializer(new_membership)
 
         return Response(
@@ -218,6 +230,9 @@ class WorkspaceMemberDetailView(generics.RetrieveUpdateDestroyAPIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        old_role = member.role
+        username = member.user.username
+
         serializer = self.get_serializer(
             member,
             data=request.data,
@@ -226,6 +241,18 @@ class WorkspaceMemberDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         serializer.is_valid(raise_exception=True)
         serializer.save()
+
+        # Record role changes only when the role actually changes.
+        if old_role != new_role:
+            log_activity(
+                workspace=member.workspace,
+                actor=request.user,
+                action="MEMBER_ROLE_CHANGED",
+                description=(
+                    f"Changed {username}'s role from "
+                    f"{old_role} to {new_role}."
+                ),
+            )
 
         return Response(serializer.data)
 
@@ -263,6 +290,17 @@ class WorkspaceMemberDetailView(generics.RetrieveUpdateDestroyAPIView):
                 },
                 status=status.HTTP_403_FORBIDDEN,
             )
+
+        workspace = member.workspace
+        username = member.user.username
+
+        # Record member removal before deleting membership.
+        log_activity(
+            workspace=workspace,
+            actor=request.user,
+            action="MEMBER_REMOVED",
+            description=f"Removed {username} from the workspace.",
+        )
 
         member.delete()
 

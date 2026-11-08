@@ -13,6 +13,8 @@ import {
   UserPlus,
   Shield,
   Trash2,
+  Activity,
+  Clock,
 } from "lucide-react";
 import api from "../services/api";
 
@@ -23,6 +25,7 @@ function WorkspacePage() {
   const [workspace, setWorkspace] = useState(null);
   const [boards, setBoards] = useState([]);
   const [members, setMembers] = useState([]);
+  const [activities, setActivities] = useState([]);
 
   const [boardName, setBoardName] = useState("");
   const [description, setDescription] = useState("");
@@ -39,6 +42,7 @@ function WorkspacePage() {
   const [error, setError] = useState("");
   const [memberError, setMemberError] = useState("");
   const [memberSuccess, setMemberSuccess] = useState("");
+  const [activityError, setActivityError] = useState("");
 
   const currentUser = JSON.parse(
     localStorage.getItem("user") || "{}"
@@ -100,6 +104,24 @@ function WorkspacePage() {
           setMemberError(
             memberErr.response?.data?.detail ||
               "Unable to load workspace members."
+          );
+        }
+
+        // Load workspace activity history.
+        try {
+          const activityResponse = await api.get(
+            `activity/workspaces/${workspaceId}/`
+          );
+
+          const activityData =
+            activityResponse.data.results || activityResponse.data;
+
+          setActivities(activityData);
+          setActivityError("");
+        } catch (activityErr) {
+          setActivityError(
+            activityErr.response?.data?.detail ||
+              "Unable to load activity history."
           );
         }
       } catch (err) {
@@ -252,6 +274,15 @@ function WorkspacePage() {
     if (isOwner) return true;
 
     return isAdmin && member.role === "MEMBER";
+  }
+
+  function formatActivityDate(date) {
+    if (!date) return "Recently";
+
+    return new Date(date).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
   }
 
   if (loading) {
@@ -593,6 +624,86 @@ function WorkspacePage() {
               You can view workspace members. Only workspace owners and
               admins can manage membership.
             </p>
+          )}
+        </section>
+
+        {/* Activity History */}
+        <section className="mb-12 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+                <Activity size={23} />
+              </div>
+
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">
+                  Activity History
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Keep track of important actions in this workspace.
+                </p>
+              </div>
+            </div>
+
+            <span className="w-fit rounded-full bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700">
+              {activities.length}{" "}
+              {activities.length === 1 ? "Activity" : "Activities"}
+            </span>
+          </div>
+
+          {activityError ? (
+            <div
+              role="alert"
+              className="rounded-2xl border border-red-100 bg-red-50 px-5 py-6 text-center"
+            >
+              <p className="text-sm font-medium text-red-600">
+                {activityError}
+              </p>
+            </div>
+          ) : activities.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 px-5 py-10 text-center">
+              <Clock
+                size={28}
+                className="mx-auto mb-3 text-slate-400"
+              />
+              <p className="font-semibold text-slate-700">
+                No activity yet
+              </p>
+              <p className="mt-1 text-sm text-slate-500">
+                Workspace actions will appear here as your team works.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {activities.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex gap-4 py-5 first:pt-0 last:pb-0"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                    <Activity size={18} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-medium leading-6 text-slate-800">
+                      {item.description}
+                    </p>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                      <span className="font-semibold text-slate-500">
+                        {item.actor_username || "Unknown user"}
+                      </span>
+
+                      <span className="hidden sm:inline">•</span>
+
+                      <span>
+                        {formatActivityDate(item.created_at)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </section>
 
