@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "corsheaders",
     "channels",
+    "analytics",
 
     "accounts.apps.AccountsConfig",
     "workspaces.apps.WorkspacesConfig",

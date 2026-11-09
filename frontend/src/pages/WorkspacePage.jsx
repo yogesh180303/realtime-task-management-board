@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -12,11 +11,11 @@ import {
   Users,
   UserPlus,
   Shield,
+  History,
   Trash2,
-  Activity,
-  Clock,
 } from "lucide-react";
 import api from "../services/api";
+import AnalyticsDashboard from "../components/AnalyticsDashboard";
 
 function WorkspacePage() {
   const { workspaceId } = useParams();
@@ -26,6 +25,7 @@ function WorkspacePage() {
   const [boards, setBoards] = useState([]);
   const [members, setMembers] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [activityError, setActivityError] = useState("");
 
   const [boardName, setBoardName] = useState("");
   const [description, setDescription] = useState("");
@@ -42,7 +42,6 @@ function WorkspacePage() {
   const [error, setError] = useState("");
   const [memberError, setMemberError] = useState("");
   const [memberSuccess, setMemberSuccess] = useState("");
-  const [activityError, setActivityError] = useState("");
 
   const currentUser = JSON.parse(
     localStorage.getItem("user") || "{}"
@@ -57,7 +56,6 @@ function WorkspacePage() {
     ownMembership?.role === "OWNER";
 
   const isAdmin = ownMembership?.role === "ADMIN";
-
   const canManageMembers = isOwner || isAdmin;
 
   useEffect(() => {
@@ -91,6 +89,7 @@ function WorkspacePage() {
           )
         );
 
+        // Load workspace members
         try {
           const memberResponse = await api.get(
             `workspaces/${workspaceId}/members/`
@@ -107,7 +106,7 @@ function WorkspacePage() {
           );
         }
 
-        // Load workspace activity history.
+        // Load workspace activity history
         try {
           const activityResponse = await api.get(
             `activity/workspaces/${workspaceId}/`
@@ -116,12 +115,13 @@ function WorkspacePage() {
           const activityData =
             activityResponse.data.results || activityResponse.data;
 
-          setActivities(activityData);
-          setActivityError("");
+          setActivities(
+            Array.isArray(activityData) ? activityData : []
+          );
         } catch (activityErr) {
           setActivityError(
             activityErr.response?.data?.detail ||
-              "Unable to load activity history."
+              "Unable to load workspace activity."
           );
         }
       } catch (err) {
@@ -136,6 +136,7 @@ function WorkspacePage() {
     loadWorkspace();
   }, [workspaceId]);
 
+  // Create a new board
   async function handleCreateBoard(event) {
     event.preventDefault();
 
@@ -165,6 +166,7 @@ function WorkspacePage() {
     }
   }
 
+  // Add a workspace member
   async function handleAddMember(event) {
     event.preventDefault();
 
@@ -186,6 +188,7 @@ function WorkspacePage() {
       setMembers((previous) => [...previous, response.data]);
       setMemberUsername("");
       setMemberRole("MEMBER");
+
       setMemberSuccess(
         `${response.data.username} was added to the workspace.`
       );
@@ -203,6 +206,7 @@ function WorkspacePage() {
     }
   }
 
+  // Change a member's role
   async function handleChangeRole(member, newRole) {
     if (newRole === member.role) return;
 
@@ -235,6 +239,7 @@ function WorkspacePage() {
     }
   }
 
+  // Remove a workspace member
   async function handleRemoveMember(member) {
     const confirmed = window.confirm(
       `Are you sure you want to remove ${member.username} from this workspace?`
@@ -270,21 +275,11 @@ function WorkspacePage() {
 
   function canRemoveMember(member) {
     if (member.role === "OWNER") return false;
-
     if (isOwner) return true;
-
     return isAdmin && member.role === "MEMBER";
   }
 
-  function formatActivityDate(date) {
-    if (!date) return "Recently";
-
-    return new Date(date).toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  }
-
+  // Loading screen
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -298,6 +293,7 @@ function WorkspacePage() {
     );
   }
 
+  // Workspace error screen
   if (error && !workspace) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-50 px-6">
@@ -316,6 +312,7 @@ function WorkspacePage() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      {/* Navigation */}
       <nav className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 md:px-8">
           <button
@@ -325,6 +322,7 @@ function WorkspacePage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-200">
               <Layers size={21} />
             </div>
+
             <span className="text-xl font-bold tracking-tight text-slate-900">
               TaskFlow
             </span>
@@ -353,6 +351,7 @@ function WorkspacePage() {
               <h1 className="break-words text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
                 {workspace?.name}
               </h1>
+
               <p className="mt-3 text-base leading-7 text-slate-500">
                 {workspace?.description ||
                   "Organize your work, create boards, and keep your team moving forward."}
@@ -363,16 +362,23 @@ function WorkspacePage() {
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
                 <LayoutGrid size={22} />
               </div>
+
               <div>
                 <p className="text-2xl font-bold text-slate-900">
                   {boards.length}
                 </p>
+
                 <p className="text-xs font-medium text-slate-500">
                   {boards.length === 1 ? "Board" : "Boards"}
                 </p>
               </div>
             </div>
           </div>
+        </section>
+
+        {/* Workspace analytics */}
+        <section className="mb-12">
+          <AnalyticsDashboard workspaceId={workspaceId} />
         </section>
 
         {/* Workspace members */}
@@ -382,10 +388,12 @@ function WorkspacePage() {
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
                 <Users size={23} />
               </div>
+
               <div>
                 <h2 className="text-xl font-bold text-slate-900">
                   Workspace members
                 </h2>
+
                 <p className="mt-1 text-sm text-slate-500">
                   Manage your team and their workspace permissions.
                 </p>
@@ -406,6 +414,7 @@ function WorkspacePage() {
             >
               <div className="mb-4 flex items-center gap-2">
                 <UserPlus size={18} className="text-indigo-600" />
+
                 <h3 className="font-semibold text-slate-800">
                   Add a team member
                 </h3>
@@ -419,6 +428,7 @@ function WorkspacePage() {
                   >
                     Username
                   </label>
+
                   <input
                     id="memberUsername"
                     type="text"
@@ -439,6 +449,7 @@ function WorkspacePage() {
                   >
                     Workspace role
                   </label>
+
                   <select
                     id="memberRole"
                     value={memberRole}
@@ -449,6 +460,7 @@ function WorkspacePage() {
                     className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 disabled:bg-slate-100"
                   >
                     <option value="MEMBER">Member</option>
+
                     {isOwner && (
                       <option value="ADMIN">Admin</option>
                     )}
@@ -474,7 +486,6 @@ function WorkspacePage() {
             </form>
           )}
 
-          {/* Member messages */}
           {memberError && (
             <p
               role="alert"
@@ -493,16 +504,18 @@ function WorkspacePage() {
             </p>
           )}
 
-          {/* Member list */}
+          {/* Members list */}
           {members.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 px-5 py-10 text-center">
               <Users
                 size={28}
                 className="mx-auto mb-3 text-slate-400"
               />
+
               <p className="font-semibold text-slate-700">
                 No members found
               </p>
+
               <p className="mt-1 text-sm text-slate-500">
                 Workspace members will appear here.
               </p>
@@ -533,12 +546,14 @@ function WorkspacePage() {
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-slate-800">
                             {member.username}
+
                             {isCurrentUser && (
                               <span className="ml-2 text-xs font-medium text-slate-400">
                                 (You)
                               </span>
                             )}
                           </p>
+
                           <p className="mt-0.5 text-xs text-slate-400">
                             Joined{" "}
                             {member.joined_at
@@ -580,6 +595,7 @@ function WorkspacePage() {
                             {member.role === "OWNER" && (
                               <Shield size={12} />
                             )}
+
                             {member.role}
                           </span>
                         )}
@@ -590,9 +606,7 @@ function WorkspacePage() {
                           canRemoveMember(member) && (
                             <button
                               type="button"
-                              onClick={() =>
-                                handleRemoveMember(member)
-                              }
+                              onClick={() => handleRemoveMember(member)}
                               disabled={
                                 removingMember === member.id ||
                                 updatingMember === member.id
@@ -600,6 +614,7 @@ function WorkspacePage() {
                               className="inline-flex items-center gap-2 rounded-lg border border-red-100 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               <Trash2 size={14} />
+
                               {removingMember === member.id
                                 ? "Removing..."
                                 : "Remove"}
@@ -627,96 +642,18 @@ function WorkspacePage() {
           )}
         </section>
 
-        {/* Activity History */}
-        <section className="mb-12 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="mb-7 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
-                <Activity size={23} />
-              </div>
-
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">
-                  Activity History
-                </h2>
-                <p className="mt-1 text-sm text-slate-500">
-                  Keep track of important actions in this workspace.
-                </p>
-              </div>
-            </div>
-
-            <span className="w-fit rounded-full bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700">
-              {activities.length}{" "}
-              {activities.length === 1 ? "Activity" : "Activities"}
-            </span>
-          </div>
-
-          {activityError ? (
-            <div
-              role="alert"
-              className="rounded-2xl border border-red-100 bg-red-50 px-5 py-6 text-center"
-            >
-              <p className="text-sm font-medium text-red-600">
-                {activityError}
-              </p>
-            </div>
-          ) : activities.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 px-5 py-10 text-center">
-              <Clock
-                size={28}
-                className="mx-auto mb-3 text-slate-400"
-              />
-              <p className="font-semibold text-slate-700">
-                No activity yet
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                Workspace actions will appear here as your team works.
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {activities.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex gap-4 py-5 first:pt-0 last:pb-0"
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
-                    <Activity size={18} />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="break-words text-sm font-medium leading-6 text-slate-800">
-                      {item.description}
-                    </p>
-
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                      <span className="font-semibold text-slate-500">
-                        {item.actor_username || "Unknown user"}
-                      </span>
-
-                      <span className="hidden sm:inline">•</span>
-
-                      <span>
-                        {formatActivityDate(item.created_at)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
         {/* Create board */}
         <section className="mb-12 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="mb-6 flex items-start gap-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
               <Plus size={23} />
             </div>
+
             <div>
               <h2 className="text-xl font-bold text-slate-900">
                 Create a new board
               </h2>
+
               <p className="mt-1 text-sm text-slate-500">
                 Start organizing tasks with a dedicated project board.
               </p>
@@ -732,6 +669,7 @@ function WorkspacePage() {
                 >
                   Board name
                 </label>
+
                 <input
                   id="boardName"
                   type="text"
@@ -752,10 +690,12 @@ function WorkspacePage() {
                   className="mb-2 block text-sm font-semibold text-slate-700"
                 >
                   Description
+
                   <span className="ml-2 font-normal text-slate-400">
                     Optional
                   </span>
                 </label>
+
                 <input
                   id="boardDescription"
                   type="text"
@@ -773,6 +713,7 @@ function WorkspacePage() {
               <p className="text-xs text-slate-400">
                 You can add and organize tasks after opening your board.
               </p>
+
               <button
                 type="submit"
                 disabled={creating || !boardName.trim()}
@@ -798,13 +739,16 @@ function WorkspacePage() {
               <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
                 Project space
               </p>
+
               <h2 className="text-2xl font-bold tracking-tight text-slate-900">
                 Your boards
               </h2>
+
               <p className="mt-1 text-sm text-slate-500">
                 Open a board to view and manage its tasks.
               </p>
             </div>
+
             <span className="text-sm font-medium text-slate-400">
               {boards.length} {boards.length === 1 ? "board" : "boards"}
             </span>
@@ -815,9 +759,11 @@ function WorkspacePage() {
               <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-500">
                 <FolderKanban size={27} />
               </div>
+
               <h3 className="text-lg font-semibold text-slate-800">
                 No boards yet
               </h3>
+
               <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-500">
                 Create your first board above to start organizing tasks
                 in this workspace.
@@ -837,6 +783,7 @@ function WorkspacePage() {
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition group-hover:bg-indigo-600 group-hover:text-white">
                       <LayoutGrid size={23} />
                     </div>
+
                     <ArrowUpRight
                       size={19}
                       className="text-slate-300 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-indigo-600"
@@ -846,6 +793,7 @@ function WorkspacePage() {
                   <h3 className="break-words text-lg font-bold text-slate-900">
                     {board.name}
                   </h3>
+
                   <p className="mt-2 min-h-10 text-sm leading-5 text-slate-500">
                     {board.description || "No description provided."}
                   </p>
@@ -854,12 +802,94 @@ function WorkspacePage() {
                     <span className="text-xs font-semibold text-indigo-600">
                       Open board
                     </span>
+
                     <span className="text-xs text-slate-400">
                       View tasks
                     </span>
                   </div>
                 </button>
               ))}
+            </div>
+          )}
+        </section>
+
+        {/* Workspace activity history */}
+        <section className="mt-12 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="mb-6 flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+              <History size={23} />
+            </div>
+
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">
+                Activity History
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Recent actions and changes made in this workspace.
+              </p>
+            </div>
+          </div>
+
+          {activityError ? (
+            <p
+              role="alert"
+              className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600"
+            >
+              {activityError}
+            </p>
+          ) : activities.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 px-5 py-10 text-center">
+              <History
+                size={28}
+                className="mx-auto mb-3 text-slate-400"
+              />
+
+              <p className="font-semibold text-slate-700">
+                No activity yet
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Workspace actions will appear here as your team works.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {activities.map((activity) => {
+                const activityDate =
+                  activity.timestamp || activity.created_at;
+
+                const actorName =
+                  activity.actor_username ||
+                  activity.actor?.username ||
+                  activity.username ||
+                  "System";
+
+                return (
+                  <div
+                    key={activity.id}
+                    className="flex flex-col gap-2 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium text-slate-800">
+                        {activity.description ||
+                          activity.action ||
+                          "Workspace activity"}
+                      </p>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        By {actorName}
+                      </p>
+                    </div>
+
+                    <time className="shrink-0 text-xs text-slate-400">
+                      {activityDate
+                        ? new Date(activityDate).toLocaleString()
+                        : "Date unavailable"}
+                    </time>
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>

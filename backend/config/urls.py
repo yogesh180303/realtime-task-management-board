@@ -9,4 +9,5 @@ urlpatterns = [
     path("api/tasks/", include("tasks.urls")),
     path("api/notifications/", include("notifications.urls")),
     path("api/activity/", include("activity.urls")),
+    path("api/analytics/", include("analytics.urls")),
 ]
