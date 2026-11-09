@@ -57,6 +57,7 @@ function TaskCard({
   onDelete,
   onComments,
   isOverlay = false,
+  disableDrag = false,
 }) {
   const {
     attributes,
@@ -68,7 +69,7 @@ function TaskCard({
   } = useSortable({
     id: task.id,
     data: { type: "Task", task },
-    disabled: isOverlay,
+    disabled: isOverlay || disableDrag,
   });
 
   const style = {
@@ -175,6 +176,7 @@ function BoardColumn({
   onEditTask,
   onDeleteTask,
   onCommentsTask,
+  disableDrag = false,
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${column.id}`,
@@ -224,6 +226,7 @@ function BoardColumn({
               onEdit={onEditTask}
               onDelete={onDeleteTask}
               onComments={onCommentsTask}
+              disableDrag={disableDrag}
             />
           ))}
 
@@ -501,6 +504,14 @@ function BoardPage() {
   const [isConnected, setIsConnected] = useState(false);
   const [commentTask, setCommentTask] = useState(null);
 
+  // Advanced task search and filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedPriorities, setSelectedPriorities] = useState([]);
+  const [assignedToFilter, setAssignedToFilter] = useState("");
+  const [dueAfterFilter, setDueAfterFilter] = useState("");
+  const [dueBeforeFilter, setDueBeforeFilter] = useState("");
+  const [overdueOnly, setOverdueOnly] = useState(false);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [selectedColumn, setSelectedColumn] = useState(null);
@@ -641,21 +652,132 @@ function BoardPage() {
     };
   }, [board]);
 
+  const filtersActive = Boolean(
+    searchQuery.trim() ||
+      selectedPriorities.length > 0 ||
+      assignedToFilter ||
+      dueAfterFilter ||
+      dueBeforeFilter ||
+      overdueOnly
+  );
+
+  const assigneeOptions = useMemo(() => {
+    const uniqueAssignees = new Map();
+
+    tasks.forEach((task) => {
+      if (task.assigned_to === null || task.assigned_to === undefined) {
+        return;
+      }
+
+      const assigneeId =
+        typeof task.assigned_to === "object"
+          ? task.assigned_to.id
+          : task.assigned_to;
+
+      if (assigneeId === null || assigneeId === undefined) return;
+
+      const assigneeName =
+        task.assigned_to_username ||
+        (typeof task.assigned_to === "object"
+          ? task.assigned_to.username || task.assigned_to.email
+          : null) ||
+        `User #${assigneeId}`;
+
+      uniqueAssignees.set(String(assigneeId), assigneeName);
+    });
+
+    return Array.from(uniqueAssignees.entries()).sort((a, b) =>
+      String(a[1]).localeCompare(String(b[1]))
+    );
+  }, [tasks]);
+
+  const visibleTasks = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    const today = new Date();
+
+    return tasks.filter((task) => {
+      if (normalizedQuery) {
+        const searchableText = `${task.title || ""} ${task.description || ""}`.toLowerCase();
+        if (!searchableText.includes(normalizedQuery)) return false;
+      }
+
+      if (
+        selectedPriorities.length > 0 &&
+        !selectedPriorities.includes(task.priority)
+      ) {
+        return false;
+      }
+
+      if (assignedToFilter) {
+        if (assignedToFilter === "unassigned") {
+          if (task.assigned_to !== null && task.assigned_to !== undefined) {
+            return false;
+          }
+        } else {
+          const assigneeId =
+            typeof task.assigned_to === "object"
+              ? task.assigned_to?.id
+              : task.assigned_to;
+          if (String(assigneeId) !== String(assignedToFilter)) return false;
+        }
+      }
+
+      const dueDate = task.due_date ? String(task.due_date).slice(0, 10) : "";
+
+      if ((dueAfterFilter || dueBeforeFilter) && !dueDate) return false;
+      if (dueAfterFilter && dueDate < dueAfterFilter) return false;
+      if (dueBeforeFilter && dueDate > dueBeforeFilter) return false;
+
+      if (overdueOnly) {
+        if (!task.due_date || new Date(task.due_date) >= today) return false;
+
+        const taskColumn = columns.find(
+          (column) => String(column.id) === String(task.column)
+        );
+        if (taskColumn?.name?.toLowerCase() === "done") return false;
+      }
+
+      return true;
+    });
+  }, [
+    tasks,
+    columns,
+    searchQuery,
+    selectedPriorities,
+    assignedToFilter,
+    dueAfterFilter,
+    dueBeforeFilter,
+    overdueOnly,
+  ]);
+
   const tasksByColumn = useMemo(() => {
     const grouped = {};
 
     columns.forEach((column) => {
-      grouped[column.id] = tasks
-        .filter(
-          (task) => String(task.column) === String(column.id)
-        )
-        .sort(
-          (a, b) => (a.position ?? 0) - (b.position ?? 0)
-        );
+      grouped[column.id] = visibleTasks
+        .filter((task) => String(task.column) === String(column.id))
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
     });
 
     return grouped;
-  }, [columns, tasks]);
+  }, [columns, visibleTasks]);
+
+  function clearFilters() {
+    setSearchQuery("");
+    setSelectedPriorities([]);
+    setAssignedToFilter("");
+    setDueAfterFilter("");
+    setDueBeforeFilter("");
+    setOverdueOnly(false);
+  }
+
+  function togglePriority(priority) {
+    setSelectedPriorities((current) =>
+      current.includes(priority)
+        ? current.filter((item) => item !== priority)
+        : [...current, priority]
+    );
+  }
 
   function openCreateModal(columnId) {
     setEditingTask(null);
@@ -792,6 +914,8 @@ function BoardPage() {
 
   async function handleDragEnd(event) {
     setActiveTask(null);
+
+    if (filtersActive) return;
 
     const { active, over } = event;
 
@@ -978,9 +1102,110 @@ function BoardPage() {
           </div>
         )}
 
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Search and filter tasks</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Showing {visibleTasks.length} of {tasks.length} tasks
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={clearFilters}
+              disabled={!filtersActive}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Clear filters
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="sm:col-span-2 xl:col-span-1">
+              <label htmlFor="task-search" className="mb-1.5 block text-xs font-semibold text-slate-600">
+                Search title or description
+              </label>
+              <input
+                id="task-search"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search tasks..."
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="assignee-filter" className="mb-1.5 block text-xs font-semibold text-slate-600">
+                Assigned to
+              </label>
+              <select
+                id="assignee-filter"
+                value={assignedToFilter}
+                onChange={(event) => setAssignedToFilter(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+              >
+                <option value="">All assignees</option>
+                <option value="unassigned">Unassigned</option>
+                {assigneeOptions.map(([id, name]) => (
+                  <option key={id} value={id}>{name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <span className="mb-1.5 block text-xs font-semibold text-slate-600">Due date range</span>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  aria-label="Due date from"
+                  type="date"
+                  value={dueAfterFilter}
+                  onChange={(event) => setDueAfterFilter(event.target.value)}
+                  className="min-w-0 w-full rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2.5 text-xs outline-none focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                />
+                <input
+                  aria-label="Due date to"
+                  type="date"
+                  value={dueBeforeFilter}
+                  onChange={(event) => setDueBeforeFilter(event.target.value)}
+                  className="min-w-0 w-full rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2.5 text-xs outline-none focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-600">Priority:</span>
+              {PRIORITIES.map((priority) => (
+                <label key={priority} className="inline-flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={selectedPriorities.includes(priority)}
+                    onChange={() => togglePriority(priority)}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  {priority}
+                </label>
+              ))}
+            </div>
+
+            <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-600">
+              <input
+                type="checkbox"
+                checked={overdueOnly}
+                onChange={(event) => setOverdueOnly(event.target.checked)}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              Overdue only
+            </label>
+          </div>
+        </section>
+
         <p className="mb-5 text-sm text-slate-500">
-          Drag tasks by the grip icon to move them between columns or
-          change their order.
+          {filtersActive
+            ? "Clear the active filters to enable task drag-and-drop."
+            : "Drag tasks by the grip icon to move them between columns or change their order."}
         </p>
 
         <DndContext
@@ -1000,6 +1225,7 @@ function BoardPage() {
                 onEditTask={openEditModal}
                 onDeleteTask={handleDelete}
                 onCommentsTask={openComments}
+                disableDrag={filtersActive}
               />
             ))}
           </div>

@@ -1,12 +1,13 @@
 
 from django.shortcuts import get_object_or_404
 from django.db import transaction
+from django.utils import timezone
 
 from channels.layers import get_channel_layer
 
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.filters import OrderingFilter
+from rest_framework.filters import OrderingFilter, SearchFilter
 
 from activity.services import log_activity
 from notifications.models import Notification
@@ -55,7 +56,14 @@ class TaskListCreateView(generics.ListCreateAPIView):
     serializer_class = TaskSerializer
     permission_classes = [IsAuthenticated]
 
-    filter_backends = [OrderingFilter]
+    # Support search and ordering together.
+    filter_backends = [SearchFilter, OrderingFilter]
+
+    # Search task titles and descriptions.
+    search_fields = [
+        "title",
+        "description",
+    ]
 
     ordering_fields = [
         "position",
@@ -67,31 +75,87 @@ class TaskListCreateView(generics.ListCreateAPIView):
     ordering = ["position", "-created_at"]
 
     def get_queryset(self):
+        # Only show tasks belonging to workspaces
+        # where the current user is a member.
         queryset = Task.objects.filter(
             workspace__memberships__user=self.request.user
         ).distinct()
 
+        # Read query parameters.
         workspace_id = self.request.query_params.get("workspace")
         column_id = self.request.query_params.get("column")
         priority = self.request.query_params.get("priority")
+        priorities = self.request.query_params.get("priorities")
         assigned_to = self.request.query_params.get("assigned_to")
+        due_before = self.request.query_params.get("due_before")
+        due_after = self.request.query_params.get("due_after")
+        overdue = self.request.query_params.get("overdue")
 
+        # Filter by workspace.
         if workspace_id:
-            queryset = queryset.filter(workspace_id=workspace_id)
+            queryset = queryset.filter(
+                workspace_id=workspace_id
+            )
 
+        # Filter by board column.
         if column_id:
-            queryset = queryset.filter(column_id=column_id)
+            queryset = queryset.filter(
+                column_id=column_id
+            )
 
-        if priority:
-            queryset = queryset.filter(priority=priority.upper())
+        # Filter by multiple priorities.
+        # Example: ?priorities=HIGH,URGENT
+        if priorities:
+            priority_list = [
+                item.strip().upper()
+                for item in priorities.split(",")
+                if item.strip()
+            ]
 
+            if priority_list:
+                queryset = queryset.filter(
+                    priority__in=priority_list
+                )
+
+        # Support the existing single-priority filter.
+        elif priority:
+            queryset = queryset.filter(
+                priority=priority.upper()
+            )
+
+        # Filter by assigned user.
         if assigned_to:
-            queryset = queryset.filter(assigned_to_id=assigned_to)
+            queryset = queryset.filter(
+                assigned_to_id=assigned_to
+            )
+
+        # Filter tasks due before a specified date.
+        if due_before:
+            queryset = queryset.filter(
+                due_date__lte=due_before
+            )
+
+        # Filter tasks due after a specified date.
+        if due_after:
+            queryset = queryset.filter(
+                due_date__gte=due_after
+            )
+
+        # Filter overdue tasks.
+        # Completed tasks in the Done column are excluded.
+        if overdue and overdue.lower() == "true":
+            queryset = queryset.filter(
+                due_date__lt=timezone.now()
+            ).exclude(
+                column__name__iexact="Done"
+            )
 
         return queryset
 
     def perform_create(self, serializer):
-        task = serializer.save(created_by=self.request.user)
+        task = serializer.save(
+            created_by=self.request.user
+        )
 
         # Record task creation in the Activity Log.
         log_activity(
@@ -106,8 +170,13 @@ class TaskListCreateView(generics.ListCreateAPIView):
         if task.assigned_to:
             Notification.objects.create(
                 recipient=task.assigned_to,
-                message=f"You have been assigned the task: {task.title}",
-                notification_type=Notification.NotificationType.TASK_ASSIGNED,
+                message=(
+                    f"You have been assigned the task: "
+                    f"{task.title}"
+                ),
+                notification_type=(
+                    Notification.NotificationType.TASK_ASSIGNED
+                ),
                 task=task,
             )
 
