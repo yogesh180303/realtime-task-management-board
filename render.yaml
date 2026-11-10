@@ -30,8 +30,4 @@
     maxmemoryPolicy: noeviction
     ipAllowList: []
 
-databases:
-  - name: realtime-task-management-board-db
-    plan: free
-    databaseName: taskmanagement
-    user: taskmanagement
+
