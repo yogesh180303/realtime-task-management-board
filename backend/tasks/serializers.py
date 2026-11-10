@@ -4,6 +4,93 @@ from rest_framework import serializers
 from .models import Task, TaskComment
 
 
+class TaskFilterSerializer(serializers.Serializer):
+    workspace = serializers.IntegerField(
+        required=False,
+        min_value=1,
+    )
+
+    column = serializers.IntegerField(
+        required=False,
+        min_value=1,
+    )
+
+    priority = serializers.ChoiceField(
+        choices=Task.Priority.choices,
+        required=False,
+    )
+
+    priorities = serializers.CharField(
+        required=False,
+    )
+
+    assigned_to = serializers.IntegerField(
+        required=False,
+        min_value=1,
+    )
+
+    due_before = serializers.DateTimeField(
+        required=False,
+    )
+
+    due_after = serializers.DateTimeField(
+        required=False,
+    )
+
+    overdue = serializers.BooleanField(
+        required=False,
+    )
+
+    def validate_priorities(self, value):
+        priority_list = [
+            item.strip().upper()
+            for item in value.split(",")
+            if item.strip()
+        ]
+
+        if not priority_list:
+            raise serializers.ValidationError(
+                "Provide at least one valid priority."
+            )
+
+        valid_priorities = [
+            choice[0]
+            for choice in Task.Priority.choices
+        ]
+
+        invalid_priorities = [
+            item
+            for item in priority_list
+            if item not in valid_priorities
+        ]
+
+        if invalid_priorities:
+            raise serializers.ValidationError(
+                f"Invalid priorities: {', '.join(invalid_priorities)}. "
+                f"Allowed values: {', '.join(valid_priorities)}."
+            )
+
+        return list(dict.fromkeys(priority_list))
+
+    def validate(self, attrs):
+        due_after = attrs.get("due_after")
+        due_before = attrs.get("due_before")
+
+        if (
+            due_after is not None
+            and due_before is not None
+            and due_after > due_before
+        ):
+            raise serializers.ValidationError({
+                "due_after": (
+                    "The start date must be earlier than "
+                    "or equal to the end date."
+                )
+            })
+
+        return attrs
+
+
 class TaskSerializer(serializers.ModelSerializer):
     column_name = serializers.ReadOnlyField(
         source="column.name"
@@ -69,14 +156,12 @@ class TaskSerializer(serializers.ModelSerializer):
 
         request = self.context.get("request")
 
-        # Check that the column belongs to the workspace.
         if workspace and column:
             if column.board.workspace_id != workspace.id:
                 raise serializers.ValidationError(
                     "The selected column must belong to the selected workspace."
                 )
 
-        # Check that the requesting user belongs to the workspace.
         if workspace and request and request.user.is_authenticated:
             is_member = workspace.memberships.filter(
                 user=request.user
@@ -87,7 +172,6 @@ class TaskSerializer(serializers.ModelSerializer):
                     "You are not a member of this workspace."
                 )
 
-        # Check that the assigned user belongs to the workspace.
         if workspace and assigned_to:
             is_assignee_member = workspace.memberships.filter(
                 user=assigned_to
@@ -118,9 +202,9 @@ class TaskCommentSerializer(serializers.ModelSerializer):
         ]
 
         read_only_fields = [
-    "id",
-    "task",
-    "author",
-    "created_at",
-    "updated_at",
-]
+            "id",
+            "task",
+            "author",
+            "created_at",
+            "updated_at",
+        ]

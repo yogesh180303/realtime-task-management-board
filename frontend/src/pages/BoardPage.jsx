@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -572,7 +571,7 @@ function BoardPage() {
     loadBoard();
   }, [loadBoard]);
 
-  // Real-time WebSocket connection
+  // Real-time WebSocket connection using a short-lived, single-use ticket
   useEffect(() => {
     if (!board) return;
 
@@ -581,74 +580,108 @@ function BoardPage() {
         ? board.workspace.id
         : board.workspace;
 
-    const token = localStorage.getItem("accessToken");
+    if (!workspaceId) return;
 
-    if (!workspaceId || !token) return;
+    let cancelled = false;
+    let socket = null;
 
-    const socket = new WebSocket(
-      `ws://127.0.0.1:8000/ws/workspaces/${workspaceId}/tasks/?token=${encodeURIComponent(token)}`
-    );
-
-    socket.onopen = () => {
-      setIsConnected(true);
-      console.log("WebSocket connected");
-    };
-
-    socket.onclose = () => {
-      setIsConnected(false);
-      console.log("WebSocket disconnected");
-    };
-
-    socket.onerror = (event) => {
-      console.error("WebSocket error:", event);
-      setIsConnected(false);
-    };
-
-    socket.onmessage = (event) => {
+    async function connectWebSocket() {
       try {
-        const message = JSON.parse(event.data);
-        const task = message.data;
+        // Request a short-lived ticket using the authenticated REST API.
+        const ticketResponse = await api.post("tasks/websocket-ticket/", {
+          workspace: workspaceId,
+        });
 
-        if (message.type === "task_created" && task) {
-          setTasks((current) => {
-            const exists = current.some(
-              (item) => String(item.id) === String(task.id)
-            );
+        if (cancelled) return;
 
-            if (exists) return current;
+        const ticket = ticketResponse.data?.ticket;
 
-            return [...current, task];
-          });
+        if (!ticket) {
+          throw new Error("The server did not return a WebSocket ticket.");
         }
 
-        if (message.type === "task_updated" && task) {
-          setTasks((current) => {
-            const exists = current.some(
-              (item) => String(item.id) === String(task.id)
-            );
+        socket = new WebSocket(
+          `ws://127.0.0.1:8000/ws/workspaces/${workspaceId}/tasks/?ticket=${encodeURIComponent(ticket)}`
+        );
 
-            if (!exists) return [...current, task];
+        socket.onopen = () => {
+          if (cancelled) return;
+          setIsConnected(true);
+          console.log("WebSocket connected");
+        };
 
-            return current.map((item) =>
-              String(item.id) === String(task.id) ? task : item
-            );
-          });
-        }
+        socket.onclose = () => {
+          if (cancelled) return;
+          setIsConnected(false);
+          console.log("WebSocket disconnected");
+        };
 
-        if (message.type === "task_deleted" && task) {
-          setTasks((current) =>
-            current.filter(
-              (item) => String(item.id) !== String(task.id)
-            )
-          );
-        }
+        socket.onerror = (event) => {
+          if (cancelled) return;
+          console.error("WebSocket error:", event);
+          setIsConnected(false);
+        };
+
+        socket.onmessage = (event) => {
+          if (cancelled) return;
+
+          try {
+            const message = JSON.parse(event.data);
+            const task = message.data;
+
+            if (message.type === "task_created" && task) {
+              setTasks((current) => {
+                const exists = current.some(
+                  (item) => String(item.id) === String(task.id)
+                );
+
+                if (exists) return current;
+
+                return [...current, task];
+              });
+            }
+
+            if (message.type === "task_updated" && task) {
+              setTasks((current) => {
+                const exists = current.some(
+                  (item) => String(item.id) === String(task.id)
+                );
+
+                if (!exists) return [...current, task];
+
+                return current.map((item) =>
+                  String(item.id) === String(task.id) ? task : item
+                );
+              });
+            }
+
+            if (message.type === "task_deleted" && task) {
+              setTasks((current) =>
+                current.filter(
+                  (item) => String(item.id) !== String(task.id)
+                )
+              );
+            }
+          } catch (err) {
+            console.error("Could not process WebSocket message:", err);
+          }
+        };
       } catch (err) {
-        console.error("Could not process WebSocket message:", err);
+        if (cancelled) return;
+
+        console.error("Failed to establish WebSocket connection:", err);
+        setIsConnected(false);
       }
-    };
+    }
+
+    connectWebSocket();
 
     return () => {
-      socket.close();
+      cancelled = true;
+
+      if (socket) {
+        socket.close();
+      }
     };
   }, [board]);
 

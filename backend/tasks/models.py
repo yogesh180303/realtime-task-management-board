@@ -1,6 +1,9 @@
 
+import hashlib
+
 from django.contrib.auth.models import User
 from django.db import models
+from django.utils import timezone
 
 from boards.models import BoardColumn
 from workspaces.models import Workspace
@@ -93,3 +96,44 @@ class TaskComment(models.Model):
 
     def __str__(self):
         return f"Comment by {self.author.username} on {self.task.title}"
+
+
+class WebSocketTicket(models.Model):
+
+    key_hash = models.CharField(
+        max_length=64,
+        unique=True,
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="websocket_tickets",
+    )
+
+    workspace = models.ForeignKey(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name="websocket_tickets",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    expires_at = models.DateTimeField()
+
+    used_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def is_valid(self):
+        return (
+            self.used_at is None
+            and self.expires_at > timezone.now()
+        )
+
+    def __str__(self):
+        return f"WebSocket ticket for {self.user.username}"

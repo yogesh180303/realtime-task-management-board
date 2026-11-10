@@ -51,7 +51,8 @@ class BoardColumnSerializer(serializers.ModelSerializer):
         ]
 
         read_only_fields = [
-            "id",
-            "board_name",
-            "created_at",
-        ]
+    "id",
+    "board",
+    "board_name",
+    "created_at",
+]

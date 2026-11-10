@@ -8,12 +8,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR / ".env")
 
-SECRET_KEY = os.getenv(
-    "SECRET_KEY",
-    "django-insecure-development-key-change-before-deployment",
-)
+SECRET_KEY = os.getenv("SECRET_KEY")
 
-DEBUG = os.getenv("DEBUG", "True").lower() == "true"
+if not SECRET_KEY or SECRET_KEY == "replace-with-a-secure-secret-key":
+    raise ValueError(
+        "SECRET_KEY is missing or insecure. "
+        "Set a secure SECRET_KEY in your backend/.env file."
+    )
+
+DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
 ALLOWED_HOSTS = [
     host.strip()

@@ -1,6 +1,7 @@
 
 from django.contrib.auth.models import User
 from django.db import models
+from django.db.models import Max
 
 from workspaces.models import Workspace
 
@@ -51,6 +52,20 @@ class BoardColumn(models.Model):
                 name="unique_board_column_position",
             )
         ]
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and self.position == 0:
+            max_position = BoardColumn.objects.filter(
+                board=self.board
+            ).aggregate(
+                max_position=Max("position")
+            )["max_position"]
+
+            self.position = (
+                max_position + 1 if max_position is not None else 0
+            )
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.board.name} - {self.name}"

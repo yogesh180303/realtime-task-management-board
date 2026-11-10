@@ -1,4 +1,3 @@
-
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.utils import timezone
@@ -13,7 +12,11 @@ from activity.services import log_activity
 from notifications.models import Notification
 
 from .models import Task, TaskComment
-from .serializers import TaskSerializer, TaskCommentSerializer
+from .serializers import (
+    TaskSerializer,
+    TaskCommentSerializer,
+    TaskFilterSerializer,
+)
 from .permissions import (
     IsCommentAuthorOrReadOnly,
     IsTaskEditorOrReadOnly,
@@ -81,69 +84,63 @@ class TaskListCreateView(generics.ListCreateAPIView):
             workspace__memberships__user=self.request.user
         ).distinct()
 
-        # Read query parameters.
-        workspace_id = self.request.query_params.get("workspace")
-        column_id = self.request.query_params.get("column")
-        priority = self.request.query_params.get("priority")
-        priorities = self.request.query_params.get("priorities")
-        assigned_to = self.request.query_params.get("assigned_to")
-        due_before = self.request.query_params.get("due_before")
-        due_after = self.request.query_params.get("due_after")
-        overdue = self.request.query_params.get("overdue")
+        # Validate incoming filter parameters.
+        filter_serializer = TaskFilterSerializer(
+            data=self.request.query_params
+        )
+
+        filter_serializer.is_valid(
+            raise_exception=True
+        )
+
+        filters = filter_serializer.validated_data
 
         # Filter by workspace.
-        if workspace_id:
+        if "workspace" in filters:
             queryset = queryset.filter(
-                workspace_id=workspace_id
+                workspace_id=filters["workspace"]
             )
 
         # Filter by board column.
-        if column_id:
+        if "column" in filters:
             queryset = queryset.filter(
-                column_id=column_id
+                column_id=filters["column"]
             )
 
         # Filter by multiple priorities.
         # Example: ?priorities=HIGH,URGENT
-        if priorities:
-            priority_list = [
-                item.strip().upper()
-                for item in priorities.split(",")
-                if item.strip()
-            ]
-
-            if priority_list:
-                queryset = queryset.filter(
-                    priority__in=priority_list
-                )
+        if "priorities" in filters:
+            queryset = queryset.filter(
+                priority__in=filters["priorities"]
+            )
 
         # Support the existing single-priority filter.
-        elif priority:
+        elif "priority" in filters:
             queryset = queryset.filter(
-                priority=priority.upper()
+                priority=filters["priority"]
             )
 
         # Filter by assigned user.
-        if assigned_to:
+        if "assigned_to" in filters:
             queryset = queryset.filter(
-                assigned_to_id=assigned_to
+                assigned_to_id=filters["assigned_to"]
             )
 
         # Filter tasks due before a specified date.
-        if due_before:
+        if "due_before" in filters:
             queryset = queryset.filter(
-                due_date__lte=due_before
+                due_date__lte=filters["due_before"]
             )
 
         # Filter tasks due after a specified date.
-        if due_after:
+        if "due_after" in filters:
             queryset = queryset.filter(
-                due_date__gte=due_after
+                due_date__gte=filters["due_after"]
             )
 
         # Filter overdue tasks.
         # Completed tasks in the Done column are excluded.
-        if overdue and overdue.lower() == "true":
+        if filters.get("overdue", False):
             queryset = queryset.filter(
                 due_date__lt=timezone.now()
             ).exclude(

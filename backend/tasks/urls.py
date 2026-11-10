@@ -7,6 +7,7 @@ from .views import (
     TaskCommentListCreateView,
     TaskCommentDetailView,
 )
+from .ticket_views import WebSocketTicketCreateView
 
 
 urlpatterns = [
@@ -16,7 +17,11 @@ urlpatterns = [
         TaskListCreateView.as_view(),
         name="task-list-create",
     ),
-
+    path(
+    "websocket-ticket/",
+    WebSocketTicketCreateView.as_view(),
+    name="websocket-ticket",
+),
     # Retrieve, update and delete a task
     path(
         "<int:pk>/",

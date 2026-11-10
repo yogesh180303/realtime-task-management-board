@@ -24,7 +24,7 @@ class WorkspaceListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         return Workspace.objects.filter(
             memberships__user=self.request.user
-        ).distinct()
+        ).distinct().order_by("id")
 
     @transaction.atomic
     def perform_create(self, serializer):
@@ -64,7 +64,9 @@ class WorkspaceMemberListCreateView(generics.ListCreateAPIView):
 
         return WorkspaceMembership.objects.filter(
             workspace=workspace
-        ).select_related("user", "workspace")
+        ).select_related(
+            "user", "workspace"
+        ).order_by("id")
 
     def create(self, request, *args, **kwargs):
         workspace = self.get_workspace()
@@ -136,7 +138,6 @@ class WorkspaceMemberListCreateView(generics.ListCreateAPIView):
             role=role,
         )
 
-        # Record member addition.
         log_activity(
             workspace=workspace,
             actor=request.user,
@@ -162,7 +163,9 @@ class WorkspaceMemberDetailView(generics.RetrieveUpdateDestroyAPIView):
         return WorkspaceMembership.objects.filter(
             workspace_id=self.kwargs["workspace_id"],
             workspace__memberships__user=self.request.user,
-        ).select_related("user", "workspace").distinct()
+        ).select_related(
+            "user", "workspace"
+        ).distinct()
 
     def get_actor_permissions(self, member):
         workspace = member.workspace
@@ -242,7 +245,6 @@ class WorkspaceMemberDetailView(generics.RetrieveUpdateDestroyAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        # Record role changes only when the role actually changes.
         if old_role != new_role:
             log_activity(
                 workspace=member.workspace,
@@ -294,7 +296,6 @@ class WorkspaceMemberDetailView(generics.RetrieveUpdateDestroyAPIView):
         workspace = member.workspace
         username = member.user.username
 
-        # Record member removal before deleting membership.
         log_activity(
             workspace=workspace,
             actor=request.user,

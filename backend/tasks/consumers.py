@@ -1,4 +1,3 @@
-
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
@@ -15,13 +14,26 @@ class TaskBoardConsumer(AsyncJsonWebsocketConsumer):
         ).exists()
 
     async def connect(self):
-        self.workspace_id = self.scope["url_route"]["kwargs"]["workspace_id"]
-        user = self.scope["user"]
+        self.workspace_id = int(
+            self.scope["url_route"]["kwargs"]["workspace_id"]
+        )
 
+        user = self.scope["user"]
+        ticket_workspace_id = self.scope.get(
+            "ticket_workspace_id"
+        )
+
+        # Reject unauthenticated connections.
         if not user.is_authenticated:
             await self.close()
             return
 
+        # Ensure the ticket was issued for this workspace.
+        if ticket_workspace_id != self.workspace_id:
+            await self.close()
+            return
+
+        # Verify that the user is still a workspace member.
         is_member = await self.is_workspace_member(
             user,
             self.workspace_id,
@@ -31,7 +43,9 @@ class TaskBoardConsumer(AsyncJsonWebsocketConsumer):
             await self.close()
             return
 
-        self.room_group_name = f"workspace_{self.workspace_id}"
+        self.room_group_name = (
+            f"workspace_{self.workspace_id}"
+        )
 
         await self.channel_layer.group_add(
             self.room_group_name,
