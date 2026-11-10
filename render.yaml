@@ -1,0 +1,39 @@
+﻿services:
+  - type: web
+    name: realtime-task-management-board-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt && cd backend && python manage.py collectstatic --noinput
+
+    startCommand: cd backend && python manage.py migrate --noinput && python -m daphne -b 0.0.0.0 -p $PORT config.asgi:application
+    healthCheckPath: /health/
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: realtime-task-management-board-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: realtime-task-management-board-redis
+          type: keyvalue
+          property: connectionString
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+
+  - type: keyvalue
+    name: realtime-task-management-board-redis
+    plan: free
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
+databases:
+  - name: realtime-task-management-board-db
+    plan: free
+    databaseName: taskmanagement
+    user: taskmanagement

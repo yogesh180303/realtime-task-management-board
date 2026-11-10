@@ -275,8 +275,35 @@ function TaskComments({ task, onClose }) {
   }, [commentsUrl]);
 
   useEffect(() => {
-    loadComments();
-  }, [loadComments]);
+  let isActive = true;
+
+  api
+    .get(commentsUrl)
+    .then((response) => {
+      if (isActive) {
+        setComments(
+          Array.isArray(response.data)
+            ? response.data
+            : response.data.results || []
+        );
+      }
+    })
+    .catch((err) => {
+      if (isActive) {
+        console.error("Failed to load comments:", err);
+        setError("Unable to load comments. Please try again.");
+      }
+    })
+    .finally(() => {
+      if (isActive) {
+        setLoading(false);
+      }
+    });
+
+  return () => {
+    isActive = false;
+  };
+}, [commentsUrl]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -568,8 +595,60 @@ function BoardPage() {
   }, [boardId]);
 
   useEffect(() => {
-    loadBoard();
-  }, [loadBoard]);
+  let isActive = true;
+
+  async function fetchBoard() {
+    try {
+      setError("");
+
+      const boardResponse = await api.get(`boards/${boardId}/`);
+      const boardData = boardResponse.data;
+
+      if (!isActive) return;
+
+      setBoard(boardData);
+
+      const workspaceId =
+        typeof boardData.workspace === "object"
+          ? boardData.workspace.id
+          : boardData.workspace;
+
+      const [columnsResponse, tasksResponse] = await Promise.all([
+        api.get(`boards/${boardId}/columns/`),
+        api.get(`tasks/?workspace=${workspaceId}`),
+      ]);
+
+      if (!isActive) return;
+
+      setColumns(
+        Array.isArray(columnsResponse.data)
+          ? columnsResponse.data
+          : columnsResponse.data.results || []
+      );
+
+      setTasks(
+        Array.isArray(tasksResponse.data)
+          ? tasksResponse.data
+          : tasksResponse.data.results || []
+      );
+    } catch (err) {
+      if (isActive) {
+        console.error("Failed to load board:", err);
+        setError("Unable to load this board. Please refresh and try again.");
+      }
+    } finally {
+      if (isActive) {
+        setLoading(false);
+      }
+    }
+  }
+
+  fetchBoard();
+
+  return () => {
+    isActive = false;
+  };
+}, [boardId]);
 
   // Real-time WebSocket connection using a short-lived, single-use ticket
   useEffect(() => {
@@ -600,9 +679,12 @@ function BoardPage() {
           throw new Error("The server did not return a WebSocket ticket.");
         }
 
-        socket = new WebSocket(
-          `ws://127.0.0.1:8000/ws/workspaces/${workspaceId}/tasks/?ticket=${encodeURIComponent(ticket)}`
-        );
+        const wsBaseUrl =
+  import.meta.env.VITE_WS_BASE_URL || "ws://127.0.0.1:8000";
+
+socket = new WebSocket(
+  `${wsBaseUrl}/ws/workspaces/${workspaceId}/tasks/?ticket=${encodeURIComponent(ticket)}`
+);
 
         socket.onopen = () => {
           if (cancelled) return;

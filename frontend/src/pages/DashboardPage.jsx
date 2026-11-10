@@ -40,8 +40,33 @@ function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    fetchWorkspaces();
-  }, [fetchWorkspaces]);
+  let isActive = true;
+
+  api
+    .get("workspaces/")
+    .then((response) => {
+      if (isActive) {
+        setWorkspaces(response.data.results || response.data);
+      }
+    })
+    .catch((err) => {
+      if (isActive) {
+        setError(
+          err.response?.data?.detail ||
+            "Unable to load workspaces. Please try again."
+        );
+      }
+    })
+    .finally(() => {
+      if (isActive) {
+        setLoading(false);
+      }
+    });
+
+  return () => {
+    isActive = false;
+  };
+}, []);
 
   const handleCreateWorkspace = async (event) => {
     event.preventDefault();

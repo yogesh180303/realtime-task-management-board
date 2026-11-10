@@ -6,7 +6,7 @@ import api from "../services/api";
 function NotificationBell() {
   const [notifications, setNotifications] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const unreadCount = notifications.filter(
@@ -31,8 +31,33 @@ function NotificationBell() {
   }, []);
 
   useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
+  let isActive = true;
+
+  api
+    .get("notifications/")
+    .then((response) => {
+      if (isActive) {
+        setNotifications(response.data.results || response.data);
+      }
+    })
+    .catch((err) => {
+      if (isActive) {
+        setError(
+          err.response?.data?.detail ||
+            "Unable to load notifications."
+        );
+      }
+    })
+    .finally(() => {
+      if (isActive) {
+        setLoading(false);
+      }
+    });
+
+  return () => {
+    isActive = false;
+  };
+}, []);
 
   const handleMarkAsRead = async (notificationId) => {
     try {
